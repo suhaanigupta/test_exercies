@@ -1,0 +1,92 @@
+class SidePlank:
+    def __init__(self, username):
+        self.username = username
+        self.hold_time = 0  # Time in seconds that the side plank is held
+        self.hip_drops = 0  # Count of hip drops during hold
+        self.warning = None
+        self.form_accuracy = []
+        self.total_accuracy = 0
+        self.completed = False
+        self.score = 0
+        self.target_time = 30  # Target hold time in seconds (adjust as needed)
+        self.message = None
+        self.start_time = None
+        UPDATE_PROGRESS(0, 0, 0, self.message, "aligned", self.username)
+        
+    def start_timer(self):
+        # Start timing the side plank hold
+        self.start_time = time.time()
+        
+    def check_form(self, lmList):
+        # Here we would calculate the angles based on the landmarks
+        elbow_angle, hip_angle, shoulder_hip_knee_alignment, _ = calculate_angles(lmList)
+
+        self.elbow_angle = elbow_angle
+        self.hip_angle = hip_angle
+        self.alignment = shoulder_hip_knee_alignment
+
+        score = 100  # Default score for each check if form is perfect
+
+        # Form analysis and score deductions for each aspect
+        if elbow_angle < 85 or elbow_angle > 95:
+            score -= 15  # Penalize if elbow isn't close to 90 degrees
+            self.message = "Keep your elbow at a right angle."
+        
+        if hip_angle < 160:
+            score -= 20  # Penalize if the hip drops too low
+            self.hip_drops += 1
+            self.message = "Lift your hips to maintain a straight line."
+        
+        if not shoulder_hip_knee_alignment:
+            score -= 15  # Penalize if body alignment is off
+            self.message = "Keep your body straight from head to toe."
+
+        # Positive feedback if all conditions are met
+        if score >= 90:
+            praising_message = [
+                "Great form! Keep holding strong!",
+                "You're doing amazing! Stay steady.",
+                "Perfect alignment! Just hold on.",
+                "Fantastic work! Maintain that position."
+            ]
+            self.message = random.choice(praising_message)
+
+        # Update scores and feedback
+        self.score = score
+        self.total_accuracy += score
+        self.form_accuracy.append(score)
+        UPDATE_PROGRESS(self.score, self.hold_time, self.target_time, self.message, "aligned", self.username)
+        
+        # Monitor duration and completion
+        current_time = time.time()
+        self.hold_time = current_time - self.start_time
+        if self.hold_time >= self.target_time:
+            self.end_plank()
+
+    def end_plank(self):
+        # Finalize accuracy and time held at the end of the plank
+        side_plank_data = {
+            "totalaccuracy": self.total_accuracy // max(1, len(self.form_accuracy)),
+            "time_held": self.hold_time,
+            "hip_drops": self.hip_drops,
+            "formaccuracy": []
+        }
+        
+        for i, accuracy in enumerate(self.form_accuracy, start=1):
+            side_plank_data["formaccuracy"].append({"check": i, "accuracy": accuracy})
+        
+        try:
+            with open('side_plank_data.json', 'r') as json_file:
+                data = json.load(json_file)
+        except FileNotFoundError:
+            data = {}
+        
+        data[self.username] = side_plank_data
+        
+        with open('side_plank_data.json', 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+        
+        self.message = generate_feedback(self.total_accuracy / max(1, len(self.form_accuracy)), "Side Plank")
+        UPDATE_PROGRESS(self.score, self.hold_time, self.target_time, self.message, "completed", self.username)
+        
+        self.completed = True
