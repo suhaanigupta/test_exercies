@@ -1,0 +1,96 @@
+class RussianTwistExercise:
+    def __init__(self, username):
+        self.username = username
+        self.counter = 0
+        self.stage = "left"  # Start assuming the user begins twisting to the left
+        self.min_angle_torso = []
+        self.max_angle_torso = []
+        self.rep_accuracy = []
+        self.total_accuracy = 0
+        self.completed = False
+        self.score = 0
+        self.total_rep = 20  # Total reps target
+        self.message = None
+        UPDATE_PROGRESS(0, 0, 0, self.message, "aligned", self.username)
+        
+    def rep_count(self, lmList):
+
+        angle_torso, angle_left_shoulder, angle_right_shoulder = calculate_twist_angles(lmList)
+        
+        # Check if user has twisted far enough to one side for a rep to be counted
+        if self.stage == "left" and angle_torso <= 60:
+            # Transition from left to right
+            self.stage = "right"
+        
+        elif self.stage == "right" and angle_torso >= 120:
+            # Transition from right to left
+            self.stage = "left"
+            self.counter += 1
+            self.analyze_form()
+            
+            if self.counter == self.total_rep:
+                russian_twist_data = {
+                    "totalaccuracy": self.total_accuracy // self.total_rep,
+                    "progress": max(self.rep_accuracy),
+                    "calories_burnt": self.counter * 0.3,  # Approx calorie count
+                    "repaccuracy": []
+                }
+                
+                # Store individual rep accuracies
+                for i, accuracy in enumerate(self.rep_accuracy, start=1):
+                    russian_twist_data["repaccuracy"].append({"reps": i, "accuracy": accuracy})
+                
+            
+                with open(parent_dir + '/json/russian_twist.json', 'w') as json_file:
+                    json.dump(russian_twist_data, json_file, indent=4)
+                
+                #feedback message
+                self.message = generate_feedback(self.total_accuracy / self.counter, "Russian Twist")
+                UPDATE_PROGRESS(self.score, self.counter, self.total_rep, self.message, "completed", self.username)
+                self.completed = True
+            
+            # Reset for next rep
+            self.min_angle_torso = []
+            self.max_angle_torso = []
+        
+        elif self.stage == "left":
+            self.min_angle_torso.append(angle_torso)
+            self.max_angle_torso.append(angle_torso)
+        
+        elif self.stage == "right":
+            self.min_angle_torso.append(angle_torso)
+            self.max_angle_torso.append(angle_torso)
+
+    def analyze_form(self):
+        # Average angles for analysis
+        avg_min_angle_torso = np.mean(self.min_angle_torso) if self.min_angle_torso else 60
+        avg_max_angle_torso = np.mean(self.max_angle_torso) if self.max_angle_torso else 120
+
+  
+        ideal_min_angle = 60
+        ideal_max_angle = 120
+        score = 100
+      if avg_min_angle_torso > ideal_min_angle + 10 or avg_max_angle_torso < ideal_max_angle - 10:
+            score -= 20
+            self.message = "Try to rotate fully from side to side."
+
+        if abs(avg_min_angle_torso - avg_max_angle_torso) > 20:
+            score -= 10
+            self.message = "Keep your torso balanced on both sides."
+
+        # Update scores
+        score = max(score, 0)
+        self.score = score
+        self.total_accuracy += score
+        self.rep_accuracy.append(score)
+        
+        if score >= 80:
+            praise_messages = [
+                "Great twist! You're rotating fully.",
+                "Keep it up, your form looks excellent!",
+                "Perfect! Remember to keep your core engaged.",
+                "Nice rotation, maintain this consistency."
+            ]
+            self.message = random.choice(praise_messages)
+  
+        UPDATE_PROGRESS(self.score, self.counter, self.total_rep, self.message, "aligned", self.username)
