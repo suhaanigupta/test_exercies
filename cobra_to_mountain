@@ -1,0 +1,94 @@
+class CobraToMountain:
+    def __init__(self, username):
+        self.username = username
+        self.transition_count = 0  # Count of completed cobra to mountain transitions
+        self.score = 0
+        self.form_accuracy = []
+        self.total_accuracy = 0
+        self.completed = False
+        self.message = None
+        self.pose = "start"  # Can be "cobra", "mountain", or "transition"
+        UPDATE_PROGRESS(0, self.transition_count, 10, self.message, "starting", self.username)
+
+    def check_form(self, lmList):
+        # Assume lmList contains landmarks from pose estimation model
+        back_angle, arm_angle, leg_angle, _ = calculate_angles(lmList)
+
+        score = 100  # Start with a default score of 100 for each form check
+
+        if self.pose == "cobra":
+            if back_angle < 200 or back_angle > 250:
+                score -= 15  # Penalize if back is not arched enough in cobra pose
+                self.message = "Arch your back slightly more."
+            if arm_angle < 70 or arm_angle > 100:
+                score -= 10  # Penalize if arms are not properly aligned
+                self.message = "Adjust your arms to support your back."
+
+        elif self.pose == "mountain":
+            if leg_angle < 170:
+                score -= 20  # Penalize if legs are not straight in mountain pose
+                self.message = "Straighten your legs and stand tall."
+            if back_angle < 170:
+                score -= 10  # Penalize if back is not upright
+                self.message = "Align your back to stand straight."
+
+        # Update scores and accuracy based on pose
+        if score >= 90:
+            praise_messages = [
+                "Perfect form! Keep going!",
+                "Excellent transition!",
+                "You're doing great!",
+                "Awesome form, keep it up!"
+            ]
+            self.message = random.choice(praise_messages)
+
+        self.score = score
+        self.total_accuracy += score
+        self.form_accuracy.append(score)
+        UPDATE_PROGRESS(self.score, self.transition_count, 10, self.message, "ongoing", self.username)
+
+    def detect_transition(self, lmList):
+        # Use landmarks to detect the pose and transitions
+        back_angle, arm_angle, leg_angle, _ = calculate_angles(lmList)
+
+        # Detecting Cobra pose
+        if back_angle > 200 and back_angle < 250 and arm_angle > 70 and arm_angle < 100:
+            self.pose = "cobra"
+            self.message = "In cobra pose."
+
+        # Detecting Mountain pose
+        elif back_angle > 160 and leg_angle > 170:
+            if self.pose == "cobra":
+                self.transition_count += 1  # Increase count when moving from cobra to mountain
+                self.pose = "mountain"
+                self.message = "In mountain pose. Good transition!"
+                self.check_form(lmList)  # Check form accuracy
+
+        UPDATE_PROGRESS(self.score, self.transition_count, 10, self.message, "transitioning", self.username)
+
+    def end_exercise(self):
+        # Save exercise data upon completion
+        cobra_to_mountain_data = {
+            "totalaccuracy": self.total_accuracy // max(1, len(self.form_accuracy)),
+            "transitions": self.transition_count,
+            "formaccuracy": []
+        }
+        
+        for i, accuracy in enumerate(self.form_accuracy, start=1):
+            cobra_to_mountain_data["formaccuracy"].append({"check": i, "accuracy": accuracy})
+
+        try:
+            with open('cobra_to_mountain_data.json', 'r') as json_file:
+                data = json.load(json_file)
+        except FileNotFoundError:
+            data = {}
+
+        data[self.username] = cobra_to_mountain_data
+
+        with open('cobra_to_mountain_data.json', 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+
+        self.message = generate_feedback(self.total_accuracy / max(1, len(self.form_accuracy)), "Cobra to Mountain")
+        UPDATE_PROGRESS(self.score, self.transition_count, 10, self.message, "completed", self.username)
+
+        self.completed = True
