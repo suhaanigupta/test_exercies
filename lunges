@@ -1,0 +1,147 @@
+class lunges_exercise():
+    def __init__(self, username):
+        self.username = username
+        self.counter = 0
+        self.stage = "down"  # Start assuming the user is at the initial lunge position
+        self.min_angle_knee_l = []
+        self.min_angle_knee_r = []
+        self.max_angle_knee_l = []
+        self.max_angle_knee_r = []
+        self.min_angle_hip_l = []
+        self.min_angle_hip_r = []
+        self.max_angle_hip_l = []
+        self.max_angle_hip_r = []
+        self.warning = None
+        self.rep_accuracy = []
+        self.total_accuracy = 0
+        self.completed = False
+        self.score = 0
+        self.total_rep = 12
+        self.lang = ""
+        self.message = None
+        UPDATE_PROGRESS(0, 0, 0, self.message, "aligned", self.username)
+        
+    def rep_count(self, lmList):
+        # Calculate angles for knees and hips
+        angle_left_knee, angle_right_knee, angle_left_hip, angle_right_hip, _, _ = calculate_angles(lmList)
+
+        self.angle_left_hip = angle_left_hip
+        self.angle_right_hip = angle_right_hip
+
+        # Check the lunge stages
+        if self.stage == "down" and (angle_left_knee <= 80 and angle_right_knee <= 80) and (angle_left_hip <= 80 and angle_right_hip <= 80):
+            # Transition from down to up
+            self.stage = "up"
+
+        elif self.stage == "up" and (angle_left_knee >= 150 and angle_right_knee >= 150) and (angle_left_hip >= 150 and angle_right_hip >= 150):
+            # Transition from up to down
+            self.stage = "down"
+            self.counter += 1
+            self.analyze_form()
+            
+            if self.counter == self.total_rep:
+                lunges_data = {
+                    "totalaccuracy": self.total_accuracy // self.total_rep,
+                    "progress": max(self.rep_accuracy),
+                    "calorie_burnt": self.counter * 0.3,
+                    "repaccuracy": []
+                }
+                for i, accuracy in enumerate(self.rep_accuracy, start=1):
+                    lunges_data["repaccuracy"].append({"reps": i, "accuracy": accuracy})
+
+                try:
+                    with open(parent_dir + '/json/lunges.json', 'r') as json_file:
+                        data = json.load(json_file)
+                except FileNotFoundError:
+                    data = {}
+
+                data[self.username] = lunges_data
+
+                with open(parent_dir + '/json/lunges.json', 'w') as json_file:
+                    json.dump(data, json_file, indent=4)
+
+                self.message = generate_feedback(self.total_accuracy / self.counter, "Lunges")
+                UPDATE_PROGRESS(self.score, self.counter, self.total_rep, self.message, "completed", self.username)
+                audio_thread = threading.Thread(target=play_audio_async, args=(self.message, self.lang,))
+                audio_thread.start()
+                self.completed = True
+            else:
+                audio_thread = threading.Thread(target=play_audio_async, args=(self.message, self.lang,))
+                audio_thread.start()
+
+            self.min_angle_knee_l = []
+            self.min_angle_knee_r = []
+            self.max_angle_knee_l = []
+            self.max_angle_knee_r = []
+            self.min_angle_hip_l = []
+            self.min_angle_hip_r = []
+            self.max_angle_hip_l = []
+            self.max_angle_hip_r = []
+
+        elif self.stage == "up":
+            self.min_angle_knee_l.append(angle_left_knee)
+            self.min_angle_knee_r.append(angle_right_knee)
+            self.max_angle_knee_l.append(angle_left_knee)
+            self.max_angle_knee_r.append(angle_right_knee)
+            self.min_angle_hip_l.append(angle_left_hip)
+            self.min_angle_hip_r.append(angle_right_hip)
+            self.max_angle_hip_l.append(angle_left_hip)
+            self.max_angle_hip_r.append(angle_right_hip)
+
+    def analyze_form(self):
+        avg_min_angle_knee_l = np.mean(self.min_angle_knee_l) if self.min_angle_knee_l else 60
+        avg_min_angle_knee_r = np.mean(self.min_angle_knee_r) if self.min_angle_knee_r else 60
+        avg_max_angle_knee_l = np.mean(self.max_angle_knee_l) if self.max_angle_knee_l else 140
+        avg_max_angle_knee_r = np.mean(self.max_angle_knee_r) if self.max_angle_knee_r else 140
+
+        avg_min_angle_hip_l = np.mean(self.min_angle_hip_l) if self.min_angle_hip_l else 60
+        avg_min_angle_hip_r = np.mean(self.min_angle_hip_r) if self.min_angle_hip_r else 60
+        avg_max_angle_hip_l = np.mean(self.max_angle_hip_l) if self.max_angle_hip_l else 140
+        avg_max_angle_hip_r = np.mean(self.max_angle_hip_r) if self.max_angle_hip_r else 140
+
+        # Apply penalties for poor form
+        score = 100
+        symmetry_tolerance = 5
+        ideal_min_angle = 60
+        ideal_max_angle = 140
+
+        # Apply penalties for angle deviations
+        if avg_min_angle_knee_l < ideal_min_angle or avg_min_angle_knee_r < ideal_min_angle:
+            score -= 20  # Not bending enough
+        if avg_max_angle_knee_l > ideal_max_angle or avg_max_angle_knee_r > ideal_max_angle:
+            score -= 20  # Overextending
+
+        if avg_min_angle_hip_l < ideal_min_angle or avg_min_angle_hip_r < ideal_min_angle:
+            score -= 20  # Not bending the hips enough
+        if avg_max_angle_hip_l > ideal_max_angle or avg_max_angle_hip_r > ideal_max_angle:
+            score -= 20  # Overextending the hips
+
+        if abs(avg_min_angle_knee_l - avg_min_angle_knee_r) > symmetry_tolerance:
+            score -= 10  # Symmetry issues with knees
+        if abs(avg_max_angle_knee_l - avg_max_angle_knee_r) > symmetry_tolerance:
+            score -= 10  # Symmetry issues with knee extension
+
+        if abs(avg_min_angle_hip_l - avg_min_angle_hip_r) > symmetry_tolerance:
+            score -= 10  # Symmetry issues with hips
+        if abs(avg_max_angle_hip_l - avg_max_angle_hip_r) > symmetry_tolerance:
+            score -= 10  # Symmetry issues with hip extension
+
+        if self.angle_left_hip < 160 or self.angle_right_hip < 160:
+            score -= 20  # Forward bending penalty
+
+        score = max(score, 0)
+
+        # Messages based on the form
+        feedback_messages = [
+            "Great form! Keep it up.",
+            "Excellent control on the lunge.",
+            "You're keeping your balance well.",
+            "Nice job with the knee bend!"
+        ]
+        
+        self.message = random.choice(feedback_messages) if score >= 80 else "Focus on maintaining balance and form."
+
+        self.score = score
+        self.total_accuracy += score
+        self.rep_accuracy.append(score)
+        UPDATE_PROGRESS(self.score, self.counter, self.total_rep, self.message, "aligned", self.username)
